@@ -1,0 +1,210 @@
+name: Build QGroundControl Hikvision Stable
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-qgc-hikvision.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QGC_REF: 527296e2d2d4ee95f52e0001db4ecb7d317fe814
+  AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@8d961e61720b3c06583517fbc68d57ec0a4e9f95
+
+jobs:
+  build:
+    name: Windows AMD64 Release
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: cmd
+
+    steps:
+      - name: Checkout QGroundControl
+        uses: actions/checkout@v7
+        with:
+          repository: mavlink/qgroundcontrol
+          ref: ${{ env.QGC_REF }}
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Apply Hikvision RTSP stability patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("src/VideoManager/VideoReceiver/GStreamer/GstSourceFactory.cc")
+          s = p.read_text(encoding="utf-8")
+
+          old1 = (
+              "void configureAutopluggedParser([[maybe_unused]] GstBin* bin, [[maybe_unused]] GstBin* subBin, GstElement* element,\n"
+              "                                [[maybe_unused]] gpointer data)\n"
+              "{\n"
+              "    configureH26xParser(element);\n"
+              "}\n"
+          )
+          new1 = (
+              "// Hikvision stability: after RTP damage, discard dependent frames until a clean keyframe.\n"
+              "// Properties are runtime-checked to remain compatible with different GStreamer builds.\n"
+              "void configureRtpDepayLossRecovery(GstElement* element)\n"
+              "{\n"
+              "    GstElementFactory* factory = gst_element_get_factory(element);\n"
+              "    if (!factory) {\n"
+              "        return;\n"
+              "    }\n"
+              "\n"
+              "    const char* factoryName = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory));\n"
+              "    const bool h264Depay = (g_strcmp0(factoryName, \"rtph264depay\") == 0);\n"
+              "    const bool h265Depay = (g_strcmp0(factoryName, \"rtph265depay\") == 0);\n"
+              "    if (!h264Depay && !h265Depay) {\n"
+              "        return;\n"
+              "    }\n"
+              "\n"
+              "    GObjectClass* objectClass = G_OBJECT_GET_CLASS(element);\n"
+              "    if (g_object_class_find_property(objectClass, \"wait-for-keyframe\")) {\n"
+              "        g_object_set(element, \"wait-for-keyframe\", TRUE, nullptr);\n"
+              "    }\n"
+              "    if (g_object_class_find_property(objectClass, \"request-keyframe\")) {\n"
+              "        g_object_set(element, \"request-keyframe\", TRUE, nullptr);\n"
+              "    }\n"
+              "}\n"
+              "\n"
+              "void configureAutopluggedParser([[maybe_unused]] GstBin* bin, [[maybe_unused]] GstBin* subBin, GstElement* element,\n"
+              "                                [[maybe_unused]] gpointer data)\n"
+              "{\n"
+              "    configureH26xParser(element);\n"
+              "    configureRtpDepayLossRecovery(element);\n"
+              "}\n"
+          )
+          if old1 not in s:
+              raise SystemExit("configureAutopluggedParser marker not found")
+          s = s.replace(old1, new1, 1)
+
+          old2 = (
+              "    // protocols mask enables TCP-interleaved fallback when UDP is blocked; without it\n"
+              "    // firewalled networks hang until tcp-timeout instead of negotiating TCP.\n"
+              "    constexpr GstRTSPLowerTrans kRtspProtocols =\n"
+              "        static_cast<GstRTSPLowerTrans>(GST_RTSP_LOWER_TRANS_UDP | GST_RTSP_LOWER_TRANS_TCP);\n"
+              "\n"
+              "    // rtspsrc always owns an internal jitterbuffer, so None maps to zero playout latency and no retransmission.\n"
+              "    const guint rtspLatencyMs = (config.jitterBuffer == JitterBuffer::None) ? 0u : latencyMs;\n"
+              "    const gboolean doRetransmission =\n"
+              "        ((config.jitterBuffer != JitterBuffer::None) && config.doRetransmission) ? TRUE : FALSE;\n"
+              "    const gboolean dropOnLatency = (config.jitterBuffer == JitterBuffer::Buffered) ? FALSE : TRUE;\n"
+          )
+          new2 = (
+              "    // Hikvision stability profile: force RTSP interleaved TCP.\n"
+              "    // This trades a small amount of latency for protection against RTP/UDP packet-loss macroblocking.\n"
+              "    constexpr GstRTSPLowerTrans kRtspProtocols =\n"
+              "        static_cast<GstRTSPLowerTrans>(GST_RTSP_LOWER_TRANS_TCP);\n"
+              "\n"
+              "    // Keep playout delay bounded: absorb normal jitter but never accumulate seconds of stale video.\n"
+              "    constexpr guint kRtspMinLatencyMs = 120u;\n"
+              "    constexpr guint kRtspMaxLatencyMs = 250u;\n"
+              "    guint rtspLatencyMs = latencyMs;\n"
+              "    if (rtspLatencyMs < kRtspMinLatencyMs) {\n"
+              "        rtspLatencyMs = kRtspMinLatencyMs;\n"
+              "    } else if (rtspLatencyMs > kRtspMaxLatencyMs) {\n"
+              "        rtspLatencyMs = kRtspMaxLatencyMs;\n"
+              "    }\n"
+              "\n"
+              "    // TCP already guarantees ordered delivery; RTP retransmission requests only add recovery delay here.\n"
+              "    const gboolean doRetransmission = FALSE;\n"
+              "    const gboolean dropOnLatency = TRUE;\n"
+          )
+          if old2 not in s:
+              raise SystemExit("RTSP policy marker not found")
+          s = s.replace(old2, new2, 1)
+
+          p.write_text(s, encoding="utf-8")
+          print("Applied Hikvision RTSP stability patch")
+          PY
+
+      - name: Verify patch
+        shell: bash
+        run: |
+          grep -n "GST_RTSP_LOWER_TRANS_TCP" src/VideoManager/VideoReceiver/GStreamer/GstSourceFactory.cc
+          grep -n "wait-for-keyframe" src/VideoManager/VideoReceiver/GStreamer/GstSourceFactory.cc
+          grep -n "kRtspMinLatencyMs" src/VideoManager/VideoReceiver/GStreamer/GstSourceFactory.cc
+
+      - name: Build Setup
+        id: build-setup
+        uses: ./.github/actions/build-setup
+        with:
+          qt-host: windows
+          qt-arch: win64_msvc2022_64
+          aqt-source: ${{ env.AQT_SOURCE }}
+          build-type: Release
+
+      - name: Configure
+        uses: ./.github/actions/cmake-configure
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
+          preset: Windows
+          extra-args: >-
+            -DQGC_BUILD_PORTABLE_TESTS=OFF
+            -DQGC_ENABLE_GST_VIDEOSTREAMING=ON
+            -DQGC_CPACK_GENERATOR=NSIS
+
+      - name: Resolve GStreamer root
+        id: gst-root
+        shell: bash
+        run: |
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/cmake_helper.py" cache-var \
+            --build-dir "${RUNNER_TEMP}/build" \
+            --name GStreamer_ROOT_DIR \
+            --required \
+            --output-key gst_root
+
+      - name: Add GStreamer to PATH
+        shell: bash
+        run: echo "${GST_ROOT}/bin" >> "$GITHUB_PATH"
+        env:
+          GST_ROOT: ${{ steps.gst-root.outputs.gst_root }}
+
+      - name: Build
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: Release
+
+      - name: Create installer
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}\build
+          build-type: Release
+          target: qgc-package
+          parallel: 'false'
+
+      - name: Prepare named installer
+        shell: pwsh
+        run: |
+          $src = "${{ runner.temp }}\build\QGroundControl-installer-AMD64.exe"
+          if (-not (Test-Path -LiteralPath $src)) {
+            Write-Error "Installer not found at $src"
+            Get-ChildItem "${{ runner.temp }}\build" -Filter "*.exe" -Recurse | Select-Object FullName
+            exit 1
+          }
+          $out = "${{ runner.temp }}\artifact"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item -LiteralPath $src -Destination "$out\QGroundControl-Hikvision-Stable.exe"
+          Get-FileHash "$out\QGroundControl-Hikvision-Stable.exe" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  QGroundControl-Hikvision-Stable.exe" } |
+            Set-Content "$out\QGroundControl-Hikvision-Stable.exe.sha256"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: QGroundControl-Hikvision-Stable-Windows
+          path: |
+            ${{ runner.temp }}/artifact/QGroundControl-Hikvision-Stable.exe
+            ${{ runner.temp }}/artifact/QGroundControl-Hikvision-Stable.exe.sha256
+          retention-days: 30
+          compression-level: 0

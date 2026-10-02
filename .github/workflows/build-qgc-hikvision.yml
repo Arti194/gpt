@@ -93,7 +93,7 @@ jobs:
       - name: Test session reconnect rules
         shell: bash
         run: |
-          python3 -m tools.generators.settings_qml.generate_pages --output-dir "${RUNNER_TEMP}/generated-settings"
+          "${GITHUB_WORKSPACE}/tools/.venv/Scripts/python.exe" -m tools.generators.settings_qml.generate_pages --output-dir "${RUNNER_TEMP}/generated-settings"
           clang++ -std=c++17 -Wall -Wextra -Werror "${GITHUB_WORKSPACE}/custom-build/tests/session_state_test.cc" -o "${RUNNER_TEMP}/session-state-test.exe"
           "${RUNNER_TEMP}/session-state-test.exe"
 

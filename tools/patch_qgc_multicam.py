@@ -225,7 +225,16 @@ s=rep(s,'    receiver->setUri(uri);', '''    const int slot = _slotForReceiver(r
         if (slot == 1) { _decoding = false; emit decodingChanged(); }
     }
     receiver->setUri(uri);''')
+# For Multi CAM, preserve unchanged pipelines when selecting a preview.
+s=rep(s, '    bool changed = false;\n    if (_activeVehicle)', '    bool changed = false;\n    QList<VideoReceiver *> changedReceivers;\n    if (_activeVehicle)')
+s=s.replace('            changed |= _updateSettings(receiver);', '            if (_updateSettings(receiver)) { changed = true; changedReceivers.append(receiver); }')
+s=rep(s, '        if (hasVideo()) {\n            _restartAllVideos();', '        if (hasVideo()) {\n            if (dualHikvisionEnabled()) {\n                for (VideoReceiver *receiver : std::as_const(changedReceivers)) _restartVideo(receiver);\n            } else {\n                _restartAllVideos();\n            }')
+# Pending restart callbacks must not reopen streams after disabling video.
+s=rep(s, '    if (receiver->uri().isEmpty()) {', '    if (!hasVideo() || receiver->uri().isEmpty()) {')
 write(p,s)
+# Removing a camera clears its URI before asynchronous stop runs. The original
+# empty-URI guard otherwise leaves its pipeline running and using bandwidth.
+edit('src/VideoManager/VideoReceiver/GStreamer/GstVideoReceiver.cc', '    if (_uri.isEmpty()) {\n        qCDebug(GstVideoReceiverLog) << "Stop called on empty URI (no-op)";', '    if (_uri.isEmpty() && !_pipeline) {\n        qCDebug(GstVideoReceiverLog) << "Stop called on empty URI with no pipeline (no-op)";')
 
 # Fly view: four stable preview widgets (so late added cameras have sinks).
 p='src/FlyView/FlyView.qml'; s=read(p)

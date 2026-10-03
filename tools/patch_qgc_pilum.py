@@ -66,8 +66,10 @@ text = text.replace("@CMAKE_PROJECT_NAME@.lnk", f"{DISPLAY_NAME}.lnk")
 text = text.replace("@CMAKE_PROJECT_NAME@ (GPU Safe Mode).lnk", f"{DISPLAY_NAME} (GPU Safe Mode).lnk")
 nsis.write_text(text, encoding="utf-8")
 
-for destination in ("resources/QGCLogoFull.svg", "resources/QGCLogoWhite.svg"):
-    shutil.copyfile(ASSETS / "pilum.svg", ROOT / destination)
+shutil.copyfile(ASSETS / "pilum.svg", ROOT / "resources/QGCLogoFull.svg")
+# Tinted menu icons use alpha, so the opaque shield would hide the crest detail.
+symbol = (ASSETS / "pilum.svg").read_text(encoding="utf-8").replace('fill="black"', 'fill="none"')
+(ROOT / "resources/QGCLogoWhite.svg").write_text(symbol, encoding="utf-8")
 for destination in ("resources/icons/qgroundcontrol.ico", "deploy/windows/WindowsQGC.ico"):
     shutil.copyfile(ASSETS / "pilum.ico", ROOT / destination)
 shutil.copyfile(ASSETS / "pilum.png", ROOT / "resources/icons/qgroundcontrol.png")

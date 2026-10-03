@@ -1,5 +1,5 @@
 # QGroundControl Hikvision optimized Windows build
-name: Build QGroundControl Multi CAM Windows
+name: Build QGroundControl Pilum Multi CAM Windows
 
 on:
   push:
@@ -10,6 +10,8 @@ on:
       - 'tools/patch_qgc_udp_low_latency.py'
       - 'tools/patch_qgc_multicam.py'
       - 'tools/multicam/**'
+      - 'tools/patch_qgc_pilum.py'
+      - 'tools/pilum/**'
       - 'tests/**'
   pull_request:
     paths:
@@ -65,6 +67,11 @@ jobs:
         run: |
           python3 "${GITHUB_WORKSPACE}/custom-build/tools/patch_qgc_multicam.py"
 
+      - name: Apply Pilum logo and application name
+        shell: bash
+        run: |
+          python3 "${GITHUB_WORKSPACE}/custom-build/tools/patch_qgc_pilum.py"
+
       - name: Verify patch
         shell: bash
         run: |
@@ -80,6 +87,8 @@ jobs:
           grep -n "hikvisionCam5SubUrl" src/Settings/Video.SettingsGroup.json
           grep -n "multiCamStreamSwitch" src/FlyView/FlyView.qml
           grep -n "LinkSessionIndicator" src/Toolbar/FlyViewToolBarIndicators.qml
+          grep -n 'setApplicationDisplayName(QStringLiteral("QGroundControl Pilum"))' src/QGCApplication.cc
+          grep -n 'Qt.application.displayName' src/MainWindow/MainWindow.qml
 
       - name: Build Setup
         id: build-setup
@@ -148,18 +157,22 @@ jobs:
             exit 1
           }
           $out = "${{ runner.temp }}\artifact"
+          $app = "${{ runner.temp }}\build\QGroundControl.exe"
+          if ((Get-Item -LiteralPath $app).VersionInfo.ProductName -ne "QGroundControl Pilum") {
+            throw "Pilum product name is missing from the built application"
+          }
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          Copy-Item -LiteralPath $src -Destination "$out\QGroundControl-MultiCAM-UDP.exe"
-          Get-FileHash "$out\QGroundControl-MultiCAM-UDP.exe" -Algorithm SHA256 |
-            ForEach-Object { "$($_.Hash)  QGroundControl-MultiCAM-UDP.exe" } |
-            Set-Content "$out\QGroundControl-MultiCAM-UDP.exe.sha256"
+          Copy-Item -LiteralPath $src -Destination "$out\QGroundControl-Pilum-MultiCAM-UDP.exe"
+          Get-FileHash "$out\QGroundControl-Pilum-MultiCAM-UDP.exe" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  QGroundControl-Pilum-MultiCAM-UDP.exe" } |
+            Set-Content "$out\QGroundControl-Pilum-MultiCAM-UDP.exe.sha256"
 
       - name: Upload installer
         uses: actions/upload-artifact@v7
         with:
-          name: QGroundControl-MultiCAM-UDP-Windows
+          name: QGroundControl-Pilum-MultiCAM-UDP-Windows
           path: |
-            ${{ runner.temp }}/artifact/QGroundControl-MultiCAM-UDP.exe
-            ${{ runner.temp }}/artifact/QGroundControl-MultiCAM-UDP.exe.sha256
+            ${{ runner.temp }}/artifact/QGroundControl-Pilum-MultiCAM-UDP.exe
+            ${{ runner.temp }}/artifact/QGroundControl-Pilum-MultiCAM-UDP.exe.sha256
           retention-days: 30
           compression-level: 0

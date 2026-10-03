@@ -1,7 +1,9 @@
-# QGroundControl Multi CAM for Windows
+# QGroundControl Pilum Multi CAM for Windows
 
 Customizations of upstream QGroundControl pinned to `527296e2d2d4ee95f52e0001db4ecb7d317fe814`.
-Apply `tools/patch_qgc_dual_hikvision.py`, then `tools/patch_qgc_udp_low_latency.py`, then `tools/patch_qgc_multicam.py` in the upstream checkout.
+Apply `tools/patch_qgc_dual_hikvision.py`, then `tools/patch_qgc_udp_low_latency.py`, then `tools/patch_qgc_multicam.py`, then `tools/patch_qgc_pilum.py` in the upstream checkout.
+
+- Pilum branding uses the supplied black/gold crest in the toolbar, Windows application/installer icons, and installer banner. The window title and Windows product/shortcut labels are `QGroundControl Pilum`. Existing application/settings and installer upgrade identities remain unchanged, preserving camera URLs and previous settings.
 
 - Multi CAM supports 2–5 cameras with separate MAIN/SUB RTSP URLs. The `+` button adds cameras; only cameras 3–5 can be removed. URLs persist across restarts. Removing a camera shifts subsequent camera pairs together.
 - One large video with smaller previews on the left. Clicking a preview swaps it with the main camera. The MAIN/SUB switch sits at center right and switches every active camera together. Stream changes briefly restart the affected receivers.
@@ -14,7 +16,7 @@ Apply `tools/patch_qgc_dual_hikvision.py`, then `tools/patch_qgc_udp_low_latency
 
 ## Validation
 
-The Windows workflow applies all patches to the pinned upstream tree, generates settings pages, runs the standalone C++ session test, builds QGC and packages `QGroundControl-MultiCAM-UDP.exe` with its SHA256 hash. Installer artifacts are kept for 30 days.
+The Windows workflow applies all patches to the pinned upstream tree, generates settings pages, runs the standalone C++ session test, builds QGC, verifies the Windows product name and packages `QGroundControl-Pilum-MultiCAM-UDP.exe` with its SHA256 hash. Installer artifacts are kept for 30 days.
 
 Local session test:
 

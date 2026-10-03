@@ -157,7 +157,7 @@ jobs:
             exit 1
           }
           $out = "${{ runner.temp }}\artifact"
-          $app = "${{ runner.temp }}\build\QGroundControl.exe"
+          $app = "${{ runner.temp }}\build\Release\QGroundControl.exe"
           if ((Get-Item -LiteralPath $app).VersionInfo.ProductName -ne "QGroundControl Pilum") {
             throw "Pilum product name is missing from the built application"
           }

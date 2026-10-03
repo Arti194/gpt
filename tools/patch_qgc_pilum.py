@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
 """Apply Pilum branding without changing QGC's existing settings namespace."""
 
-from pathlib import Path
 import shutil
-
+from pathlib import Path
 
 ROOT = Path.cwd()
 ASSETS = Path(__file__).resolve().parent / "pilum"

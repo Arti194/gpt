@@ -1,5 +1,5 @@
 # QGroundControl Hikvision optimized Windows build
-name: Build QGroundControl Hikvision UDP Low Latency
+name: Build QGroundControl Pilum Multi CAM Windows
 
 on:
   push:
@@ -8,6 +8,16 @@ on:
       - '.github/workflows/build-qgc-hikvision.yml'
       - 'tools/patch_qgc_dual_hikvision.py'
       - 'tools/patch_qgc_udp_low_latency.py'
+      - 'tools/patch_qgc_multicam.py'
+      - 'tools/multicam/**'
+      - 'tools/patch_qgc_pilum.py'
+      - 'tools/pilum/**'
+      - 'tests/**'
+  pull_request:
+    paths:
+      - '.github/workflows/build-qgc-hikvision.yml'
+      - 'tools/**'
+      - 'tests/**'
   workflow_dispatch:
 
 permissions:
@@ -52,6 +62,16 @@ jobs:
         run: |
           python3 "${GITHUB_WORKSPACE}/custom-build/tools/patch_qgc_udp_low_latency.py"
 
+      - name: Apply Multi CAM and telemetry customization
+        shell: bash
+        run: |
+          python3 "${GITHUB_WORKSPACE}/custom-build/tools/patch_qgc_multicam.py"
+
+      - name: Apply Pilum logo and application name
+        shell: bash
+        run: |
+          python3 "${GITHUB_WORKSPACE}/custom-build/tools/patch_qgc_pilum.py"
+
       - name: Verify patch
         shell: bash
         run: |
@@ -64,7 +84,11 @@ jobs:
           grep -n "kRtspMinLatencyMs = 40u" src/VideoManager/VideoReceiver/GStreamer/GstSourceFactory.cc
           grep -n "kRtspMaxLatencyMs = 80u" src/VideoManager/VideoReceiver/GStreamer/GstSourceFactory.cc
           grep -n "camera2Video" src/VideoManager/VideoManager.cc
-          grep -n "hikvisionCam2SubUrl" src/Settings/Video.SettingsGroup.json
+          grep -n "hikvisionCam5SubUrl" src/Settings/Video.SettingsGroup.json
+          grep -n "multiCamStreamSwitch" src/FlyView/FlyView.qml
+          grep -n "LinkSessionIndicator" src/Toolbar/FlyViewToolBarIndicators.qml
+          grep -n 'setApplicationDisplayName(QStringLiteral("QGroundControl Pilum"))' src/QGCApplication.cc
+          grep -n 'Qt.application.displayName' src/MainWindow/MainWindow.qml
 
       - name: Build Setup
         id: build-setup
@@ -74,6 +98,13 @@ jobs:
           qt-arch: win64_msvc2022_64
           aqt-source: ${{ env.AQT_SOURCE }}
           build-type: Release
+
+      - name: Test session reconnect rules
+        shell: bash
+        run: |
+          "${GITHUB_WORKSPACE}/tools/.venv/Scripts/python.exe" -m tools.generators.settings_qml.generate_pages --output-dir "${RUNNER_TEMP}/generated-settings"
+          clang++ -std=c++17 -Wall -Wextra -Werror "${GITHUB_WORKSPACE}/custom-build/tests/session_state_test.cc" -o "${RUNNER_TEMP}/session-state-test.exe"
+          "${RUNNER_TEMP}/session-state-test.exe"
 
       - name: Configure
         uses: ./.github/actions/cmake-configure
@@ -126,18 +157,22 @@ jobs:
             exit 1
           }
           $out = "${{ runner.temp }}\artifact"
+          $app = "${{ runner.temp }}\build\Release\QGroundControl.exe"
+          if ((Get-Item -LiteralPath $app).VersionInfo.ProductName -ne "QGroundControl Pilum") {
+            throw "Pilum product name is missing from the built application"
+          }
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          Copy-Item -LiteralPath $src -Destination "$out\QGroundControl-Hikvision-DualCam-UDP.exe"
-          Get-FileHash "$out\QGroundControl-Hikvision-DualCam-UDP.exe" -Algorithm SHA256 |
-            ForEach-Object { "$($_.Hash)  QGroundControl-Hikvision-DualCam-UDP.exe" } |
-            Set-Content "$out\QGroundControl-Hikvision-DualCam-UDP.exe.sha256"
+          Copy-Item -LiteralPath $src -Destination "$out\QGroundControl-Pilum-MultiCAM-UDP.exe"
+          Get-FileHash "$out\QGroundControl-Pilum-MultiCAM-UDP.exe" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  QGroundControl-Pilum-MultiCAM-UDP.exe" } |
+            Set-Content "$out\QGroundControl-Pilum-MultiCAM-UDP.exe.sha256"
 
       - name: Upload installer
         uses: actions/upload-artifact@v7
         with:
-          name: QGroundControl-Hikvision-DualCam-UDP-Windows
+          name: QGroundControl-Pilum-MultiCAM-UDP-Windows
           path: |
-            ${{ runner.temp }}/artifact/QGroundControl-Hikvision-DualCam-UDP.exe
-            ${{ runner.temp }}/artifact/QGroundControl-Hikvision-DualCam-UDP.exe.sha256
+            ${{ runner.temp }}/artifact/QGroundControl-Pilum-MultiCAM-UDP.exe
+            ${{ runner.temp }}/artifact/QGroundControl-Pilum-MultiCAM-UDP.exe.sha256
           retention-days: 30
           compression-level: 0
